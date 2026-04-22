@@ -5,7 +5,7 @@ from contextlib import suppress
 
 import frappe
 from frappe import _
-from frappe.query_builder.functions import DateFormat, Function
+from frappe.query_builder.functions import DateFormat, Function, Cast
 from frappe.query_builder.utils import DocType
 from frappe.utils.data import add_to_date, cstr, flt, now_datetime
 from frappe.utils.formatters import format_value
@@ -34,12 +34,19 @@ def get_monthly_results(
 	Table = DocType(goal_doctype)
 	date_format = "%m-%Y" if frappe.db.db_type != "postgres" else "MM-YYYY"
 
+	# For PostgreSQL, we need to cast the field when using SUM/AVG to avoid ambiguity
+	if frappe.db.db_type == "postgres" and aggregation.lower() in ["sum", "avg"]:
+		# Cast to numeric for PostgreSQL
+		aggregated_field = Function(aggregation, Cast(Table[goal_field], "numeric"))
+	else:
+		aggregated_field = Function(aggregation, goal_field)
+
 	return dict(
 		frappe.qb.get_query(
 			table=goal_doctype,
 			fields=[
 				DateFormat(Table[date_col], date_format).as_("month_year"),
-				Function(aggregation, goal_field),
+				aggregated_field,
 			],
 			filters=filters,
 			ignore_permissions=False,
